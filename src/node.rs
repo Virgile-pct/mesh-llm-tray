@@ -49,7 +49,9 @@ pub fn open_console() {
 
 /// Start the background service setup installed.
 pub fn start() {
-    let _ = hidden("schtasks").args(["/Run", "/TN", SERVICE_TASK]).spawn();
+    let _ = hidden("schtasks")
+        .args(["/Run", "/TN", SERVICE_TASK])
+        .spawn();
 }
 
 /// Stop the node the way a person would: `mesh-llm stop` ends the service
@@ -98,8 +100,12 @@ fn installed_exe() -> Option<PathBuf> {
             .map(|dir| dir.join("mesh-llm.exe"))
             .collect::<Vec<_>>()
     });
-    let default = std::env::var_os("LOCALAPPDATA")
-        .map(|dir| PathBuf::from(dir).join("mesh-llm").join("bin").join("mesh-llm.exe"));
+    let default = std::env::var_os("LOCALAPPDATA").map(|dir| {
+        PathBuf::from(dir)
+            .join("mesh-llm")
+            .join("bin")
+            .join("mesh-llm.exe")
+    });
     on_path.chain(default).find(|candidate| candidate.is_file())
 }
 

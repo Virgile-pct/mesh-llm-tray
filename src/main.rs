@@ -1,18 +1,20 @@
-//! MeshLLM in the Windows notification area: a dot that says whether the
-//! local node is up, and a menu to open its console, start or stop it.
+//! MeshLLM in the Windows notification area: the logo says whether the local
+//! node is up, and a menu opens its console, starts or stops it.
 //! Everything goes through what a person would use: the console port, the
 //! `mesh-llm` scheduled task and `mesh-llm stop`.
 
 #![cfg_attr(windows, windows_subsystem = "windows")]
 
+mod autostart;
+mod icon;
 mod node;
 
 use node::NodeState;
 use std::time::{Duration, Instant};
 use tao::event::{Event, StartCause};
 use tao::event_loop::{ControlFlow, DeviceEventFilter, EventLoopBuilder};
-use tray_icon::menu::{Menu, MenuEvent, MenuItem, PredefinedMenuItem};
-use tray_icon::{Icon, TrayIcon, TrayIconBuilder};
+use tray_icon::menu::{CheckMenuItem, Menu, MenuEvent, MenuItem, PredefinedMenuItem};
+use tray_icon::{TrayIcon, TrayIconBuilder};
 
 const POLL: Duration = Duration::from_secs(3);
 
@@ -25,6 +27,7 @@ struct Items {
     open: MenuItem,
     start: MenuItem,
     stop: MenuItem,
+    autostart: CheckMenuItem,
     quit: MenuItem,
 }
 
@@ -43,6 +46,7 @@ fn main() {
         open: MenuItem::new("Open console", false, None),
         start: MenuItem::new("Start node", false, None),
         stop: MenuItem::new("Stop node", false, None),
+        autostart: CheckMenuItem::new("Start with Windows", true, autostart::is_enabled(), None),
         quit: MenuItem::new("Quit", true, None),
     };
     let mut tray: Option<TrayIcon> = None;
@@ -67,12 +71,13 @@ fn main() {
                     &items.start,
                     &items.stop,
                     &PredefinedMenuItem::separator(),
+                    &items.autostart,
                     &items.quit,
                 ]);
                 tray = TrayIconBuilder::new()
                     .with_menu(Box::new(menu))
                     .with_tooltip("MeshLLM")
-                    .with_icon(dot(NodeState::Stopped))
+                    .with_icon(icon::for_state(NodeState::Stopped))
                     .build()
                     .inspect_err(|error| log(&format!("tray icon not created: {error}")))
                     .ok();
@@ -86,6 +91,14 @@ fn main() {
                     node::start();
                 } else if event.id == items.stop.id() {
                     node::stop();
+                } else if event.id == items.autostart.id() {
+                    // The menu already flipped the check; keep it only if the
+                    // registry agrees.
+                    let wanted = items.autostart.is_checked();
+                    if !autostart::set(wanted) {
+                        log(&format!("start with Windows: could not set {wanted}"));
+                    }
+                    items.autostart.set_checked(autostart::is_enabled());
                 } else if event.id == items.quit.id() {
                     tray.take();
                     *control_flow = ControlFlow::Exit;
@@ -102,7 +115,9 @@ fn refresh(tray: Option<&TrayIcon>, items: &Items, shown: &mut Option<NodeState>
     let service = node::service_installed();
     let running = state == NodeState::Running;
     items.open.set_enabled(running);
-    items.stop.set_enabled(running && node::mesh_llm_exe().is_some());
+    items
+        .stop
+        .set_enabled(running && node::mesh_llm_exe().is_some());
     items.start.set_enabled(!running && service);
     let label = match (state, service) {
         (NodeState::Running, _) => "MeshLLM is running",
@@ -112,38 +127,22 @@ fn refresh(tray: Option<&TrayIcon>, items: &Items, shown: &mut Option<NodeState>
     items.status.set_text(label);
     if *shown != Some(state) {
         if let Some(tray) = tray {
-            let _ = tray.set_icon(Some(dot(state)));
+            let _ = tray.set_icon(Some(icon::for_state(state)));
             let _ = tray.set_tooltip(Some(label));
         }
         *shown = Some(state);
     }
 }
 
-/// A 32x32 dot: green while the node answers, grey otherwise.
-fn dot(state: NodeState) -> Icon {
-    const SIZE: u32 = 32;
-    let (r, g, b) = match state {
-        NodeState::Running => (0x2e, 0xa0, 0x5c),
-        NodeState::Stopped => (0x8a, 0x8a, 0x8a),
-    };
-    let center = (SIZE as f32 - 1.0) / 2.0;
-    let mut rgba = Vec::with_capacity((SIZE * SIZE * 4) as usize);
-    for y in 0..SIZE {
-        for x in 0..SIZE {
-            let distance = ((x as f32 - center).powi(2) + (y as f32 - center).powi(2)).sqrt();
-            // Soft edge over one pixel so the dot is not jagged at small sizes.
-            let alpha = (13.5 - distance).clamp(0.0, 1.0);
-            rgba.extend_from_slice(&[r, g, b, (alpha * 255.0) as u8]);
-        }
-    }
-    Icon::from_rgba(rgba, SIZE, SIZE).expect("a 32x32 RGBA buffer is a valid icon")
-}
-
 /// Append a line to %TEMP%\mesh-llm-tray.log; the app has no console to print to.
 fn log(line: &str) {
     use std::io::Write;
     let path = std::env::temp_dir().join("mesh-llm-tray.log");
-    if let Ok(mut file) = std::fs::OpenOptions::new().create(true).append(true).open(path) {
+    if let Ok(mut file) = std::fs::OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open(path)
+    {
         let _ = writeln!(file, "{line}");
     }
 }
