@@ -8,6 +8,7 @@
 mod autostart;
 mod icon;
 mod node;
+mod single_instance;
 
 use node::NodeState;
 use std::time::{Duration, Instant};
@@ -32,6 +33,11 @@ struct Items {
 }
 
 fn main() {
+    // Released when the process ends: the event loop below never returns.
+    let Some(_instance) = single_instance::acquire() else {
+        log("another MeshLLM tray already runs in this session");
+        return;
+    };
     let event_loop = EventLoopBuilder::<UserEvent>::with_user_event().build();
     // Raw mouse and keyboard input from the whole desktop is of no use here,
     // and every such event would wake the loop.
