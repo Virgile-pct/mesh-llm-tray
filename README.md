@@ -2,6 +2,9 @@
 
 A Windows notification-area icon for a local [MeshLLM](https://github.com/Mesh-LLM/mesh-llm) node, for people who installed it with `install.ps1` and would rather not keep a terminal open.
 
+<img width="414" height="409" alt="image" src="https://github.com/user-attachments/assets/2d39e7f6-3e98-47b9-8f5c-9839f71e53c0" />
+
+
 - The MeshLLM logo in colour with a green badge while the node answers on `localhost:3131`, greyed otherwise. It checks every 3 seconds.
 - **Open console** opens the web console in the default browser.
 - **Start node** runs the background service `mesh-llm setup --service` installed (the `mesh-llm` scheduled task).
